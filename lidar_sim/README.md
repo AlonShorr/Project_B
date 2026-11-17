@@ -287,3 +287,28 @@ Tests (from this folder, with the Project B venv):
 ```bash
 ../.venv/Scripts/python -m pytest test_motion_model.py -q
 ```
+
+## Project B: sensing model and Bayes filter (task t4)
+
+The formal model: `ROADMAP_TECHNICAL.md` §3.3–3.4 (design decisions D5–D7).
+
+| File | What it does |
+|---|---|
+| `sensing.py` | `SensingParams(R, p_miss)`; `ray_walls` (walls in range per cell and ray); `ray_distributions`; `build_observation_model` → `Z (N, (R+2)**4)`; `encode_observation` / `decode_observation` / `describe_observation`; `noiseless_signatures`, `signature_ambiguity` (R-limited ambiguity for t6.1); `sample_observation` |
+| `belief.py` | Exact Bayes filter on the flat belief `b (N,)`: `predict` (conditioned on no collision), `correct`, `uniform_belief`, `observation_probabilities`, and `BayesFilter` with an `n_fallbacks` counter |
+| `grid_env.py` | `GridEnv(..., sensing=SensingParams(...))` returns an observation at reset and after every move that does not collide (`None` on DECLARE and collisions). Without `sensing`, `obs` stays `None` as before |
+| `config.py` | `SENSING_RANGE_R = 2`, `SENSING_P_MISS = 0.05` (proposed t1.3 defaults), `BELIEF_FALLBACK_EPS = 0.01` |
+
+Semantics:
+- 4 rays, in the order N, E, S, W. A wall at distance `j` is the closed edge on the far side of the `j`-th cell along the ray, with the robot's own cell as `j = 0`. Only walls with `j ≤ R` are in range. The outer border is a wall.
+- Each wall in range is missed independently with `p_miss`. The ray reports the first wall it does not miss, or NONE. There are no false positives.
+- Observation index: `o = Σ v_i (R+2)^i`, with ray N as the lowest digit and `v = R+1` meaning NONE. `|O| = 256` for R = 2.
+- The belief uses the same cell index as `T`/`C` (`r * cols + c`), so `b @ T[a]` and `Z[:, o] * b̄` are the whole update.
+
+The GUI and auto mode still use Project A's 5-ray ToF model and the `(r, c, 8)` belief. They move to the new sensing model with the Project A port (t7).
+
+Tests:
+
+```bash
+../.venv/bin/python -m pytest test_sensing.py test_belief.py -q     # Linux/WSL venv
+```

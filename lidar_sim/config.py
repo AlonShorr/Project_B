@@ -49,6 +49,16 @@ MOTION_P_DRIFT = 0.1
 MOTION_WALL_MODE = "collide"
 MAX_EPISODE_STEPS = 200
 
+# --- Project B sensing model (sensing.py) ---
+# 4 cardinal rays (N, E, S, W). Each reports the distance in cells (0..R) to
+# the first wall it does not miss, or NONE. |O| = (R + 2) ** 4 = 256 for R = 2.
+# Proposed defaults (t1.3), not yet confirmed by the supervisor.
+SENSING_RANGE_R = 2
+SENSING_P_MISS = 0.05   # each wall in range is missed independently
+# Belief filter (belief.py): weight of the uniform distribution mixed in when
+# an observation or a survival is impossible under the model.
+BELIEF_FALLBACK_EPS = 0.01
+
 # Turn model
 TURN_TARGET_DEG = ROTATION_STEP
 TURN_SIGMA_DEG = 4.0
