@@ -1,2 +1,14 @@
 # Reference papers/slides from supervisor emails (kept local, not committed)
 references/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Office lock files
+~$*
+
+# Separate git repo (Gantt site), tracked on its own
+gantt-project-b/
