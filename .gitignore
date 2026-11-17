@@ -12,3 +12,7 @@ __pycache__/
 
 # Separate git repo (Gantt site), tracked on its own
 gantt-project-b/
+
+# Local Claude notes (contain the team password)
+CLAUDE.md
+CLAUDE.local.md

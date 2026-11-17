@@ -11,7 +11,11 @@ or handles the terminal DECLARE action:
 
 Every terminal outcome is a separate type in ``Outcome`` and is stored in the
 episode log, so batch runs can count collisions apart from wrong declarations.
-Observations are added by the sensing model (t4); until then ``obs`` is None.
+
+Observations (t4) are opt-in: pass ``sensing=SensingParams(...)`` and ``obs`` is
+an observation index from ``sensing.py``, received at reset and after every
+move that does not collide. DECLARE and terminal steps give ``obs = None``
+(roadmap D7). Without ``sensing``, ``obs`` is always None.
 """
 
 from __future__ import annotations
@@ -28,8 +32,10 @@ from motion_model import (
     MotionParams,
     MoveResult,
     Outcome,
+    cell_index,
     sample_move,
 )
+from sensing import SensingParams, ray_walls, sample_observation
 
 Cell = tuple[int, int]
 
@@ -46,6 +52,7 @@ class EpisodeLog:
     moves: list[MoveResult] = field(default_factory=list)
     final_cell: Cell | None = None
     collision: MoveResult | None = None   # the move that collided, if any
+    observations: list[int] = field(default_factory=list)
 
     @property
     def failed(self) -> bool:
@@ -70,7 +77,7 @@ class EpisodeLog:
 
 @dataclass(frozen=True)
 class StepResult:
-    obs: Any                 # None until the sensing model (t4) exists
+    obs: int | None          # observation index, or None (no sensing / DECLARE / terminal)
     outcome: Outcome
     info: dict[str, Any]
 
@@ -84,6 +91,7 @@ class GridEnv:
         goal_cells: Iterable[Cell],
         params: MotionParams | None = None,
         max_steps: int | None = None,
+        sensing: SensingParams | None = None,
     ):
         self.wall_map = np.asarray(wall_map)
         self.rows, self.cols = self.wall_map.shape[:2]
@@ -95,6 +103,8 @@ class GridEnv:
                 raise ValueError(f"goal cell {(r, c)} is outside the map")
         self.params = params if params is not None else MotionParams.from_config()
         self.max_steps = config.MAX_EPISODE_STEPS if max_steps is None else int(max_steps)
+        self.sensing = sensing
+        self._ray_table = None if sensing is None else ray_walls(self.wall_map, sensing.R)
 
         self.rng: np.random.Generator | None = None
         self.cell: Cell | None = None
@@ -122,7 +132,7 @@ class GridEnv:
             raise ValueError(f"start cell {start} is outside the map")
         self.cell = start
         self.log = EpisodeLog(seed=seed, start=start, trajectory=[start])
-        return StepResult(obs=None, outcome=Outcome.RUNNING, info={"cell": start})
+        return StepResult(obs=self._observe(), outcome=Outcome.RUNNING, info={"cell": start})
 
     @property
     def done(self) -> bool:
@@ -155,7 +165,16 @@ class GridEnv:
             return self._finish(Outcome.TIMEOUT, info)
 
         info["cell"] = self.cell
-        return StepResult(obs=None, outcome=Outcome.RUNNING, info=info)
+        return StepResult(obs=self._observe(), outcome=Outcome.RUNNING, info=info)
+
+    def _observe(self) -> int | None:
+        """Sample an observation at the current cell (None without sensing)."""
+        if self.sensing is None:
+            return None
+        s = cell_index(*self.cell, self.cols)
+        obs = sample_observation(self._ray_table, s, self.sensing, self.rng)
+        self.log.observations.append(obs)
+        return obs
 
     def _finish(self, outcome: Outcome, info: dict[str, Any]) -> StepResult:
         self.log.outcome = outcome
