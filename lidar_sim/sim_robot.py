@@ -13,6 +13,7 @@ from discrete_noise import (
     sample_three_way,
     turn_transition_probs,
 )
+from motion_model import MotionParams, sample_move
 
 ACTION_FORWARD = "FORWARD"
 ACTION_TURN_LEFT = "TURN_LEFT"
@@ -107,6 +108,19 @@ class Robot:
         if action == ACTION_FORWARD:
             return self.move_forward_noisy(wall_map, rng) if noisy else self._move_forward_one_cell(wall_map)
         raise ValueError(f"unknown action: {action}")
+
+    def apply_move_action(self, action, wall_map, rng, params=None):
+        """Execute a Project B 8-direction move (motion_model.Action) on the true robot.
+
+        Heading is not used and not changed. Returns the motion_model.MoveResult;
+        if ``result.collided`` the run should end as a COLLISION. The robot is left
+        in the last cell it reached before the wall.
+        """
+        if params is None:
+            params = MotionParams.from_config()
+        result = sample_move(wall_map, self.r, self.c, action, params, rng)
+        self.move_to(result.r, result.c)
+        return result
 
     def measure(self, wall_map, add_noise=False):
         """

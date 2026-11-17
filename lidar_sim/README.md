@@ -253,3 +253,31 @@ Angle index `0` points East; indices increase clockwise at 45° steps.
 | 7 | North-East |
 
 The A* planner only moves on cardinal headings (0, 2, 4, 6). Diagonal headings are used only for rotation.
+
+---
+
+## Project B: 8-direction motion model (task t3)
+
+Copied from `AlonShorr/Project_A` @ `5f5f98e` (`development/SA_Simulator/lidar_sim`) and extended.
+
+| File | What it does |
+|---|---|
+| `motion_model.py` | Actions `N, NE, E, SE, S, SW, W, NW, DECLARE`; `MotionParams`; `can_step` / `resolve_move` (wall geometry); `move_distribution`, `build_transition_model` → `T (8,N,N)`, `C (8,N)`; `sample_move` |
+| `grid_env.py` | Headless episodes: `GridEnv.reset/step`, outcomes `SUCCESS / WRONG_DECLARATION / COLLISION / TIMEOUT`, `EpisodeLog`, `outcome_counts` |
+| `sim_robot.py` | `Robot.apply_move_action(action, wall_map, rng)` uses the same model |
+| `config.py` | `MOTION_P_STEPS` (None → Project A Gaussian ≈ 0.02/0.97/0.01), `MOTION_P_STEPS_HARD`, `MOTION_P_DRIFT = 0.1`, `MOTION_WALL_MODE`, `MAX_EPISODE_STEPS` |
+
+Semantics:
+- The realized direction is the commanded one with probability `1 − p_drift`, else ±45° (split equally).
+- The step count is k ∈ {0, 1, 2} with probability `p_steps[k]`, along a straight line.
+- Every edge crossed is checked. A diagonal goes through the shared corner, so all 4 edges meeting at that corner must be open (equivalently, both L-paths are open).
+- `wall_mode="collide"`: a blocked step ends the run as `COLLISION`. `"stop"`: Project A behaviour (stop in front of the wall).
+- Invariant: `T[a, s].sum() + C[a, s] == 1`.
+
+The Pygame GUI and the `(r, c, 8)` belief still use the old heading-based FORWARD/TURN actions. They move to the new model together with the sensing model (t4) and the 2-D belief.
+
+Tests (from this folder, with the Project B venv):
+
+```bash
+../.venv/Scripts/python -m pytest test_motion_model.py -q
+```
