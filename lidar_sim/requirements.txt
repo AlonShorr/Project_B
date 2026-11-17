@@ -1,0 +1,2 @@
+# Dependencies live in the repo-root requirements.txt (imported from Project A).
+-r ../requirements.txt
