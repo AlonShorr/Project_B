@@ -12,6 +12,7 @@ import pytest
 import config
 from config import WALL_DOWN, WALL_LEFT, WALL_RIGHT, WALL_UP
 from grid_env import GridEnv, outcome_counts
+from localization import predict_forward_8dir
 from map_generator import get_maps
 from motion_model import (
     DIR_DELTAS,
@@ -20,6 +21,7 @@ from motion_model import (
     MotionParams,
     Outcome,
     build_transition_model,
+    heading_to_action,
     can_step,
     cell_index,
     index_to_cell,
@@ -405,3 +407,59 @@ def test_robot_apply_move_action():
     assert (robot.r, robot.c) == (2, 2) == (res.r, res.c) and not res.collided
     res = robot.apply_move_action(Action.SE, wall_map, rng, params=MotionParams((0, 0, 1), 0))
     assert res.collided and (robot.r, robot.c) == (3, 3)
+
+
+# ---------------------------------------------------------------------------
+# GUI manual control: W moves forward along any of the 8 headings
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("angle_index", range(8))
+def test_heading_to_action_matches_drawn_heading(angle_index):
+    """The move must go where the GUI draws the heading (cos/sin, y down)."""
+    robot = Robot(0, 0)
+    robot.angle_index = angle_index
+    rad = math.radians(robot.angle_deg)
+    expected = (int(round(math.sin(rad))), int(round(math.cos(rad))))   # (dr, dc)
+    assert DIR_DELTAS[heading_to_action(angle_index)] == expected
+
+
+def test_heading_to_action_names():
+    assert [heading_to_action(i).name for i in range(8)] == [
+        "E", "SE", "S", "SW", "W", "NW", "N", "NE",
+    ]
+
+
+@pytest.mark.parametrize("angle_index", range(8))
+def test_predict_forward_8dir_deterministic(angle_index):
+    wall_map = open_wall_map(5, 5)
+    belief = np.zeros((5, 5, 8))
+    belief[2, 2, angle_index] = 1.0
+    out = predict_forward_8dir(belief, wall_map, DET)
+    dr, dc = DIR_DELTAS[heading_to_action(angle_index)]
+    assert out[2 + dr, 2 + dc, angle_index] == pytest.approx(1.0)
+    assert out.sum() == pytest.approx(1.0)
+
+
+def test_predict_forward_8dir_matches_model_and_conditions_on_survival():
+    wall_map = random_maze(5, 6, seed=3)
+    rng = np.random.default_rng(4)
+    belief = rng.random((5, 6, 8))
+    belief /= belief.sum()
+    out = predict_forward_8dir(belief, wall_map, HARD)
+    T, C = build_transition_model(wall_map, HARD)
+    expected = np.stack(
+        [(belief[:, :, th].reshape(-1) @ T[heading_to_action(th)]).reshape(5, 6) for th in range(8)],
+        axis=2,
+    )
+    survive = expected.sum()
+    assert survive < 1.0                       # some mass collides in this maze
+    np.testing.assert_allclose(out, expected / survive, atol=1e-12)
+
+
+def test_robot_forward_on_diagonal_heading():
+    wall_map = open_wall_map(4, 4)
+    robot = Robot(2, 1)
+    robot.angle_index = 7                      # NE
+    res = robot.apply_move_action(heading_to_action(robot.angle_index), wall_map,
+                                  np.random.default_rng(0), params=DET)
+    assert (robot.r, robot.c) == (1, 2) and not res.collided and robot.angle_index == 7

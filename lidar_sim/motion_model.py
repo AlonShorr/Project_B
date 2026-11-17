@@ -78,6 +78,16 @@ DIR_DELTAS: tuple[tuple[int, int], ...] = (
 )
 
 
+def heading_to_action(angle_index: int) -> Action:
+    """Map a robot heading index to the move action that goes "forward".
+
+    Heading indices follow the rest of lidar_sim: 0 = East, increasing
+    clockwise in 45° steps (2 = South, 4 = West, 6 = North). Actions start at
+    North and also go clockwise, so the two differ by a quarter turn.
+    """
+    return Action((int(angle_index) + 2) % NUM_MOVES)
+
+
 class Outcome(Enum):
     """State of an episode after a step."""
 

@@ -18,8 +18,8 @@ python3 lidar_pygame_sim.py
 
 | Key | Action |
 |---|---|
-| `W / A / S / D` | Move robot (up / left / down / right) |
-| `Q / E` | Rotate robot counter-clockwise / clockwise (45° steps) |
+| `W` | Move forward along the current heading. All 8 headings can move, using the Project B motion model (noise, drift, collision) |
+| `Q / E` | Rotate robot left (counter-clockwise) / right (clockwise), 45° steps |
 | `1 – 5` | Toggle individual sensors on/off |
 | `R` | Start / stop autonomous mode (localize → plan → navigate) |
 | `B` | Toggle map builder mode (click cell edges to add/remove walls) |
@@ -274,7 +274,13 @@ Semantics:
 - `wall_mode="collide"`: a blocked step ends the run as `COLLISION`. `"stop"`: Project A behaviour (stop in front of the wall).
 - Invariant: `T[a, s].sum() + C[a, s] == 1`.
 
-The Pygame GUI and the `(r, c, 8)` belief still use the old heading-based FORWARD/TURN actions. They move to the new model together with the sensing model (t4) and the 2-D belief.
+Pygame GUI, manual mode:
+- `W` sends the move action that matches the current heading (`motion_model.heading_to_action`).
+- The belief update uses `localization.predict_forward_8dir`, which applies the same `T` per heading and conditions on no collision.
+- A collision ends the run, and `W`/`Q`/`E` are ignored until you teleport (left-click), reload a map (F1–F10) or start auto mode (`R`).
+- Rotations stay noiseless, as in Project A.
+
+Auto mode still uses Project A's cardinal-only FORWARD/TURN actions. It moves to the new model together with the sensing model (t4) and the 2-D belief.
 
 Tests (from this folder, with the Project B venv):
 

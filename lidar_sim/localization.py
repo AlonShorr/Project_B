@@ -8,6 +8,7 @@ from config import (
     SENSOR_LIKELIHOOD_FLOOR, SENSOR_LIKELIHOOD_POWER,
 )
 from discrete_noise import forward_transition_probs, turn_transition_probs
+from motion_model import MotionParams, build_transition_model, heading_to_action
 from sim_robot import Robot
 
 N_ORIENTATIONS = 8
@@ -136,6 +137,37 @@ def predict_forward(prob_matrix, wall_map, noisy=None):
                 r2, c2 = _advance_one_cell(r1, c1, theta, wall_map)
                 predicted[r2, c2, theta] += mass * probs[2]
 
+    return _normalize_or_uniform(predicted)
+
+
+_TRANSITION_CACHE = {}
+
+
+def _cached_transition_model(wall_map, params):
+    """build_transition_model, cached per (wall_map contents, params)."""
+    key = (wall_map.shape, wall_map.tobytes(), params)
+    if key not in _TRANSITION_CACHE:
+        if len(_TRANSITION_CACHE) >= 16:
+            _TRANSITION_CACHE.clear()
+        _TRANSITION_CACHE[key] = build_transition_model(wall_map, params)
+    return _TRANSITION_CACHE[key]
+
+
+def predict_forward_8dir(prob_matrix, wall_map, params=None):
+    """Prediction for FORWARD under the Project B motion model (motion_model.py).
+
+    Every heading moves forward in its own direction, so diagonal headings move
+    too. Drift moves the robot sideways without changing its heading. The result
+    is conditioned on "no collision": a run that collided has already ended.
+    """
+    if params is None:
+        params = MotionParams.from_config()
+    T, _ = _cached_transition_model(np.asarray(wall_map), params)
+    rows, cols, orientations = prob_matrix.shape
+    predicted = np.empty_like(prob_matrix, dtype=float)
+    for theta in range(orientations):
+        a = heading_to_action(theta)
+        predicted[:, :, theta] = (prob_matrix[:, :, theta].reshape(-1) @ T[a]).reshape(rows, cols)
     return _normalize_or_uniform(predicted)
 
 

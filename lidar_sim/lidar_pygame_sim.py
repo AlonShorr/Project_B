@@ -21,10 +21,12 @@ from localization import (
     update_probability,
     predict_motion,
     predict_action,
+    predict_forward_8dir,
     get_best_estimate,
     collapse_position_belief,
     dominant_position_modes,
 )
+from motion_model import MotionParams, heading_to_action
 from active_localization import select_best_action, apply_action_to_robot
 from motion_planning import plan_path
 from map_builder import toggle_wall_click, dump_selected_cells
@@ -34,7 +36,7 @@ from map_generator import get_maps
 def main():
     pygame.init()
     screen = pygame.display.set_mode(WINDOW_SIZE)
-    pygame.display.set_caption("Lidar Sim: WASD=Move, QE=Rotate, R=Auto, B=Builder, P=Analysis")
+    pygame.display.set_caption("Lidar Sim: W=Forward, Q/E=Rotate L/R, R=Auto, B=Builder, P=Analysis")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Arial", 18)
     small_font = pygame.font.SysFont("Arial", 14)
@@ -51,6 +53,9 @@ def main():
     prob_matrix = initialize_belief(MAP_ROWS, MAP_COLS)
 
     robot = Robot(*current_map["start"])
+    # Project B motion model for manual FORWARD (8 headings, drift, collisions).
+    motion_params = MotionParams.from_config()
+    collided = False   # a collision ends the run until teleport / map change / auto start
 
     analysis_mode = False
     selected_cells = set()
@@ -67,9 +72,10 @@ def main():
 
     def select_map(index):
         nonlocal current_map_index, current_map, wall_map, expected_data
-        nonlocal prob_matrix, goal
+        nonlocal prob_matrix, goal, collided
         if not 0 <= index < len(maps):
             return
+        collided = False
         current_map_index = index
         current_map = maps[index]
         wall_map = np.array(current_map["wall_map"], copy=True)
@@ -114,8 +120,8 @@ def main():
 
         def handle_keydown(key):
             nonlocal analysis_mode, building_mode, expected_data, prob_matrix
-            nonlocal auto_step_delay
-            nonlocal dr, dc, moved, commanded_action
+            nonlocal auto_step_delay, collided
+            nonlocal commanded_action
 
             def exit_builder():
                 nonlocal building_mode, expected_data, prob_matrix
@@ -172,6 +178,7 @@ def main():
                     if analysis_mode:
                         selected_cells.clear()
                         analysis_mode = False
+                    collided = False
                     start_auto()
                 else:
                     stop_auto()
@@ -187,14 +194,21 @@ def main():
             if not building_mode and not analysis_mode and auto_state in (AUTO_IDLE, AUTO_DONE):
                 if auto_state == AUTO_DONE:
                     reset_auto()
+                if collided and key in (pygame.K_w, pygame.K_q, pygame.K_e):
+                    print("Run ended by COLLISION. Left-click to teleport, "
+                          "F1-F10 to reload a map, or R to run auto.")
+                    return
                 if key == pygame.K_w:
-                    dr, dc = -1, 0
-                elif key == pygame.K_s:
-                    dr, dc = 1, 0
-                elif key == pygame.K_a:
-                    dr, dc = 0, -1
-                elif key == pygame.K_d:
-                    dr, dc = 0, 1
+                    # Forward along the current heading; any of the 8 headings
+                    # can move (Project B motion model, motion_model.py).
+                    action = heading_to_action(robot.angle_index)
+                    result = robot.apply_move_action(action, wall_map, rng, motion_params)
+                    if result.collided:
+                        collided = True
+                        print(f"COLLISION: forward {action.name} hit a wall "
+                              f"(went {result.direction.name}, k={result.k}). Run ended.")
+                    else:
+                        commanded_action = "FORWARD_8DIR"
                 elif key == pygame.K_q:
                     robot.rotate(-1)
                     commanded_action = "TURN_LEFT"
@@ -211,10 +225,6 @@ def main():
                     robot.toggle_sensor(3)
                 elif key == pygame.K_5:
                     robot.toggle_sensor(4)
-
-                if dr != 0 or dc != 0:
-                    if robot.move_rel(dr, dc, wall_map):
-                        moved = True
 
         # --- Event handling ---
         for event in pygame.event.get():
@@ -245,8 +255,9 @@ def main():
                                 if auto_state == AUTO_MOVING:
                                     auto_state = AUTO_PLANNING
                                 print(f"Goal set to {goal}")
-                            else:  # Left-click: teleport robot
+                            else:  # Left-click: teleport robot (starts a new run)
                                 robot.move_to(r, c)
+                                collided = False
                                 prob_matrix = initialize_belief(MAP_ROWS, MAP_COLS)
 
             elif event.type == pygame.KEYDOWN:
@@ -344,7 +355,9 @@ def main():
                 eff_dr, eff_dc = dr, dc
                 eff_moved = moved
 
-            if eff_action in ("FORWARD", "TURN_LEFT", "TURN_RIGHT"):
+            if eff_action == "FORWARD_8DIR":
+                prob_matrix = predict_forward_8dir(prob_matrix, wall_map, motion_params)
+            elif eff_action in ("FORWARD", "TURN_LEFT", "TURN_RIGHT"):
                 prob_matrix = predict_action(
                     prob_matrix, eff_action, wall_map, noisy=eff_action_noisy
                 )
@@ -465,6 +478,8 @@ def main():
             mode_txt, mode_col = "ANALYSIS MODE", CYAN
         elif building_mode:
             mode_txt, mode_col = "BUILDER MODE", YELLOW
+        elif collided:
+            mode_txt, mode_col = "COLLISION - RUN ENDED", RED
         elif auto_state == AUTO_DONE:
             mode_txt, mode_col = "GOAL REACHED!", GREEN
         elif auto_state != AUTO_IDLE:
@@ -498,7 +513,7 @@ def main():
             draw_text(f"Step delay: {auto_step_delay}ms  [ / ]", tiny_font, WHITE)
             draw_text("R: Stop Auto", tiny_font, ORANGE, gap=4)
         else:
-            draw_text("WASD: Move  |  Q/E: Rotate", tiny_font, WHITE)
+            draw_text("W: Forward  |  Q/E: Rotate L/R", tiny_font, WHITE)
             draw_text("LClick: Teleport", tiny_font, WHITE)
             draw_text(f"RClick: Set Goal {goal}", tiny_font, YELLOW)
             draw_text(f"Step delay: {auto_step_delay}ms  [ / ]", tiny_font, WHITE)
