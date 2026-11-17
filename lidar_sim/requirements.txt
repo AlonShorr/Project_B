@@ -1,5 +1,2 @@
-# Use with Python 3.12.3
-numpy>=1.26,<3.0
-matplotlib>=3.8,<4.0
-pygame>=2.5,<3.0
-pytest>=8
+# Dependencies live in the repo-root requirements.txt (imported from Project A).
+-r ../requirements.txt
