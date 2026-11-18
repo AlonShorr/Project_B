@@ -228,6 +228,12 @@ run: {n_runs: 1000, seed0: 0, out: results/xyz.csv}
 
 Defaults to fix in `t1.3`: d ∈ {1%, 5%, 10%} (evaluation points), R = 2, `p_drift` = 0.1, `p_miss` = 0.05. For `p_steps`, Project A's defaults give ≈ (0.02, 0.97, 0.01), which is nearly deterministic. Use (0.1, 0.8, 0.1) as the "hard" setting and Project A's values as the "easy" setting. All of these are placeholders until `m3` calibrates them.
 
+**Changed 2026-11-18 (`t1.2`, `t1.3`; reasons and numbers in `docs/decisions/t1_defaults.md`, reproduce with `lidar_sim/defaults_analysis.py`):**
+- Under D3 (collision ends the run) the placeholders above make even a robot that *knows* its cell fail 46% (10×10) and 79% (16×16) of runs (exact MDP bound), so failures would measure motion noise, not localization. New rule: the MDP failure floor must be < d_min/5 on 10×10 and < d_min on every bank maze.
+- Motion: `p_steps` = (0.05, 0.9499, 0.0001) (stay is common because it never collides; overshoot is a rare gross error), `p_drift` = 0.0001. Floor: 0.10% (10×10 mean), ≤ 0.88% (16×16 max, `japan_2017`). Stress preset `configs/stress.yaml`: (0.1, 0.898, 0.002), `p_drift` 0.002. The (0.1, 0.8, 0.1) preset is dropped.
+- R = 2, 4 rays (|O| = 256; R = 3 gains little ambiguity for 2.4× |O|). `p_miss` = 0.05. d ∈ {1%, 5%, 10%} (1% is the smallest rate measurable with 1,000 runs), stored in `evaluation.d_targets`.
+- Switch (`t1.2`): localized ⇔ `P_max ≥ τ_loc` ∧ `P_far/P_max < ρ_amb`, far = Chebyshev ≥ `sep_min`; back to localizing when `P_max < τ_lost`. Project A values 0.25 / 0.5 / 0.15 / 2 (port fidelity; swept in `t8`). `ε_col` = 0.005, `max_steps` = 400.
+
 ---
 
 ## 3. Formal model (shared by every component)

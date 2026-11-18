@@ -76,9 +76,12 @@ def test_action_set():
     assert [a.is_diagonal for a in MOVE_ACTIONS] == [False, True] * 4
 
 
-def test_default_params_match_project_a():
-    assert PROJECT_A.p_drift == pytest.approx(config.MOTION_P_DRIFT)
-    assert PROJECT_A.p_steps == pytest.approx((0.02, 0.97, 0.01), abs=5e-3)
+def test_default_params_match_t1_defaults():
+    # t1.3 defaults (docs/decisions/t1_defaults.md). PROJECT_A is the name of
+    # the Gaussian-plus-extras form Project A used; its values changed in t1.3.
+    assert PROJECT_A.p_drift == pytest.approx(config.MOTION_P_DRIFT) == pytest.approx(1e-4)
+    assert PROJECT_A.p_steps == pytest.approx((0.05, 0.9499, 0.0001), abs=1e-6)
+    assert HARD.p_steps == pytest.approx((0.1, 0.898, 0.002)) and HARD.p_drift == pytest.approx(0.002)
     assert PROJECT_A.wall_mode == "collide"
     assert MotionParams.from_config(noisy=False) == DET
 

@@ -13,6 +13,9 @@ __pycache__/
 # Separate git repo (Gantt site), tracked on its own
 gantt-project-b/
 
+# Batch runner output (lidar_sim/runner.py)
+results/
+
 # Local Claude notes (contain the team password)
 CLAUDE.md
 CLAUDE.local.md

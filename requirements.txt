@@ -5,6 +5,7 @@
 numpy>=1.26,<3.0
 matplotlib>=3.8,<4.0
 pygame>=2.5,<3.0
+pyyaml>=6.0,<7.0
 
 # Tests (lidar_sim/test_motion_model.py)
 pytest>=8
