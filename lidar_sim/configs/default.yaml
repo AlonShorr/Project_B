@@ -37,7 +37,7 @@ motion:
                             # corner open); hard-coded in motion_model.can_step, no other value
   wall_mode: collide        # collide | stop (Project A behaviour)
 
-sensing:                    # used by the sensing model (t4), not yet implemented
+sensing:                    # sensing.py (t4) / config.SENSING_*; runner.py does not pass it to GridEnv yet
   R: 2                      # ray range in cells: |O| = (R+2)^4 = 256
   rays: 4                   # 4 cardinal rays (or 8)
   p_miss: 0.05              # each wall in range is missed independently
