@@ -1,0 +1,12 @@
+# Stress preset (t1.3): 20x more gross motion errors than default.yaml and
+# twice the stalls. Use it for sensitivity runs, e.g.
+#   python runner.py --config configs/stress.yaml
+# With perfect knowledge of the cell the failure floor is ~2% on 10x10 and ~9%
+# on 16x16 (docs/decisions/t1_defaults.md), so d = 1% is out of reach here.
+# The old "hard" preset (0.1, 0.8, 0.1) with p_drift 0.1 has a floor of
+# 57% (10x10) and 84% (16x16) under wall_mode: collide, so it is not used.
+motion:
+  p_steps: [0.1, 0.898, 0.002]
+  p_drift: 0.002
+run:
+  out: results/stress.csv

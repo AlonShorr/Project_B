@@ -1,0 +1,81 @@
+# Project B experiment configuration (t5.0).
+#
+# Every experiment parameter lives in this file, and this file is the only
+# source of defaults (sim_config.py has none). Other config files only list the
+# keys they change; they are merged on top of this one (an empty or null
+# section means "no changes"). Single values can also be changed on the
+# command line:
+#
+#   python runner.py --config configs/default.yaml --set motion.p_drift=0.2
+#
+# Unknown or missing keys are an error, so a typo cannot silently fall back to
+# a default. The motion values below match config.py / MotionParams.from_config()
+# (the GUI's settings); test_runner.py checks that parity.
+
+maze:
+  name: medium/m10_a        # maze_bank.load_maze(name)
+  goal: null                # null = the maze's own goal cells, or [[r, c], ...]
+
+# Noise, R, d and the localize/travel switch were chosen in t1.2/t1.3; the reasons
+# and the numbers behind them are in docs/decisions/t1_defaults.md
+# (reproduce with: python defaults_analysis.py).
+
+motion:
+  # Step count k in {0, 1, 2}: a Gaussian over the one-cell step with a
+  # +-half-cell bin, plus explicit extra mass -> (0.05, 0.9499, 0.0001).
+  # Stay (k=0) never collides, so it is the "cheap" source of uncertainty;
+  # overshoot (k=2) and drift collide, so they are kept rare (gross errors).
+  # Ignored when p_steps is given.
+  cell_size_mm: 180.0       # config.CELL_SIZE_MM; target and bin of the Gaussian
+  step_sigma_mm: 15.0       # config.FORWARD_SIGMA_MM
+  step_bias_mm: 0.0         # config.FORWARD_BIAS_MM
+  extra_stay: 0.05          # config.FORWARD_EXTRA_STAY_PROB: wheel slip / stall
+  extra_over: 0.0001        # config.FORWARD_EXTRA_OVERSHOOT_PROB (extra_stay + extra_over <= 0.95)
+  p_steps: null             # or [p0, p1, p2] directly; see configs/stress.yaml
+  p_drift: 0.0001           # config.MOTION_P_DRIFT, split +-45 degrees (a gross error)
+  diag_rule: both_L_open    # documents rule D2 only (a diagonal needs all 4 edges at the
+                            # corner open); hard-coded in motion_model.can_step, no other value
+  wall_mode: collide        # collide | stop (Project A behaviour)
+
+sensing:                    # used by the sensing model (t4), not yet implemented
+  R: 2                      # ray range in cells: |O| = (R+2)^4 = 256
+  rays: 4                   # 4 cardinal rays (or 8)
+  p_miss: 0.05              # each wall in range is missed independently
+  miss_mode: skip_to_next   # D6: skip_to_next | first_only
+
+episode:
+  max_steps: 400            # config.MAX_EPISODE_STEPS; then TIMEOUT (longest 16x16 path is 109 moves)
+  step_cost: 1.0            # T += step_cost per move action
+  declare_cost: 0.0         # T += declare_cost for the DECLARE action
+
+projecta:                   # thresholds of the Project A heuristic (t7)
+  # Localize -> travel switch (t1.2): localized  <=>  P_max >= tau_loc  and
+  # P(best cell at Chebyshev distance >= sep_min) / P_max < rho_amb.
+  # Back to localizing when P_max < tau_lost (hysteresis, tau_lost < tau_loc).
+  tau_loc: 0.25             # config.LOCALIZATION_THRESHOLD
+  rho_amb: 0.5              # config.LOCALIZATION_AMBIGUITY_RATIO
+  tau_lost: 0.15            # config.IS_LOST_THRESHOLD
+  sep_min: 2                # dominant_position_modes(min_separation=2)
+  tau_declare: 0.95         # DECLARE when b(goal) >= tau_declare; main Pareto knob (~ d = 5%)
+  eps_col: 0.005            # max believed collision risk of one move; > p_drift + p_step2
+  move_cost: 0.1            # nats per move, active_localization.select_best_action
+
+policy:
+  name: oracle_bfs          # random | oracle_bfs
+  params:                   # one entry per policy; only the entry for `name` is used
+    random:
+      declare_after: 20     # DECLARE after this many random moves
+      diagonal: true        # sample from all 8 directions (false: 4 cardinal)
+    oracle_bfs:             # privileged reference baseline: reads the true cell and follows a
+                            # BFS shortest path, but ignores motion noise, so drift and k=2 still
+                            # make it collide (~0.03% on medium/m10_a). Not an upper bound.
+      diagonal: true        # shortest path over 8 directions (false: 4 cardinal)
+
+run:
+  n_runs: 1000
+  seed0: 0                  # episode seeds are seed0 .. seed0 + n_runs - 1
+  workers: 1                # >1 uses a multiprocessing.Pool over seeds
+  out: results/default.csv  # a <name>.config.yaml sidecar is written next to it
+
+evaluation:                 # analysis only; not part of config_hash
+  d_targets: [0.01, 0.05, 0.10]   # failure rates at which T is read off the Pareto frontier (t8)

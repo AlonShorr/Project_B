@@ -32,22 +32,23 @@ FORWARD_SIGMA_MM = 15.0
 FORWARD_BIAS_MM = 0.0
 FORWARD_TRANSITION_BIN_HALF_WIDTH_MM = CELL_SIZE_MM / 2.0
 FORWARD_CONTROL_TOLERANCE_MM = 25.0
-FORWARD_EXTRA_STAY_PROB = 0.02
-FORWARD_EXTRA_OVERSHOOT_PROB = 0.01
+FORWARD_EXTRA_STAY_PROB = 0.05   # t1.3, see docs/decisions/t1_defaults.md
+FORWARD_EXTRA_OVERSHOOT_PROB = 0.0001
 
 # --- Project B motion model (motion_model.py) ---
 # 8 absolute move directions (N, NE, E, SE, S, SW, W, NW), no heading.
 # Step count k in {0, 1, 2} uses the FORWARD_* Gaussian parameters above unless
 # MOTION_P_STEPS is set explicitly to (p0, p1, p2).
 MOTION_P_STEPS = None
-MOTION_P_STEPS_HARD = (0.1, 0.8, 0.1)   # "hard" preset for experiments
+MOTION_P_STEPS_HARD = (0.1, 0.898, 0.002)   # "stress" preset (configs/stress.yaml)
 # Probability that the realized direction drifts to an adjacent direction
 # (+-45 degrees), split equally between the two sides. Applies to diagonals too.
-MOTION_P_DRIFT = 0.1
+MOTION_P_DRIFT = 0.0001
+MOTION_P_DRIFT_HARD = 0.002
 # "collide": crossing a closed edge ends the run as a COLLISION (Project B).
 # "stop":    the robot stops in front of the wall (Project A behaviour).
 MOTION_WALL_MODE = "collide"
-MAX_EPISODE_STEPS = 200
+MAX_EPISODE_STEPS = 400
 
 # Turn model
 TURN_TARGET_DEG = ROTATION_STEP

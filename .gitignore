@@ -12,3 +12,6 @@ __pycache__/
 
 # Separate git repo (Gantt site), tracked on its own
 gantt-project-b/
+
+# Batch runner output (lidar_sim/runner.py)
+results/

@@ -163,7 +163,7 @@ class MotionParams:
 
     @classmethod
     def hard(cls, wall_mode: str = "collide") -> "MotionParams":
-        return cls(config.MOTION_P_STEPS_HARD, config.MOTION_P_DRIFT, wall_mode)
+        return cls(config.MOTION_P_STEPS_HARD, config.MOTION_P_DRIFT_HARD, wall_mode)
 
 
 def direction_probs(action: Action, p_drift: float) -> list[tuple[Action, float]]:
