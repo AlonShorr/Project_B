@@ -1,0 +1,32 @@
+# MuJoCo simulator parameters (phase pm). Everything the experiment itself needs
+# (maze, motion/sensing model the policy assumes, policy, seeds) stays in
+# lidar_sim/configs/default.yaml; this file only holds what the physics needs.
+#
+# Override single values on the command line:
+#   python run_mujoco.py --mj-set noise.bad_return_on=true --mj-set controller.v_max=0.2
+# Unknown keys are an error.
+
+controller:                 # sim/env.py MazeSim (m1.2)
+  kp: 4.0                   # 1/s, P gain from position error to velocity command
+  v_max: 0.30               # m/s, command limit per axis
+  eps_v: 0.001              # m/s, "at rest" speed
+  eps_x: 0.003              # m, "on target" position error
+  t_min: 0.05               # s, no stop test before this (speed is 0 at t = 0)
+  timeout: 3.0              # s of simulated time per action
+
+noise:                      # sim/noise.py NoiseConfig (m2). All off = the m1 baseline.
+                            # Values are placeholders until m2.4 (datasheet / predecessor logs).
+  friction_on: false
+  mu_lo: 0.05               # N, slide-joint frictionloss, drawn per episode
+  mu_hi: 0.30
+  vel_noise_on: false
+  vel_sigma: 0.05           # multiplicative velocity-command noise, per action
+  heading_sigma: 0.05       # rad, command rotation; the only source of sideways drift
+  stop_jitter_on: false
+  stop_jitter_s: 0.05       # s, extra coasting U[0, stop_jitter_s], per action
+  range_noise_on: false
+  range_a: 0.002            # m, sigma(r) = a + b * r on every reading
+  range_b: 0.02
+  bad_return_on: false
+  p_bad_return: 0.05        # a ray that does not return properly (a "miss"): noisy, never empty
+  bad_return_sigma: 0.15    # m

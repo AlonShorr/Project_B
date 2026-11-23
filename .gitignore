@@ -19,3 +19,6 @@ results/
 # Local Claude notes (contain the team password)
 CLAUDE.md
 CLAUDE.local.md
+
+# MuJoCo generated models and placeholder calibration output (mujuco/sim)
+mujuco/build/

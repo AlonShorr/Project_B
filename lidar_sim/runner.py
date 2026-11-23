@@ -14,6 +14,13 @@ Randomness: the environment uses ``default_rng(seed)`` (the same start cell as
 the policy therefore never changes the start cells or the motion noise drawn
 for the same action sequence (common random numbers for paired comparisons).
 
+Other simulators (m1.3): ``run_batch(..., env_factory=f)`` runs the same
+policies on any env with GridEnv's interface (``reset(seed)``, ``step(action)``,
+``done``, ``log`` and the attributes ``EnvInfo.from_env`` reads). ``f(cfg, maze)``
+builds the env once per worker and must be picklable for ``workers > 1``.
+mujuco/run_mujoco.py passes the MuJoCo env this way, so this module never
+imports mujoco.
+
 This module must not import pygame (directly or through other modules).
 """
 
@@ -29,7 +36,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 import numpy as np
 
@@ -128,20 +135,28 @@ def experiment_hash(cfg: SimConfig, maze: LoadedMaze) -> str:
 # Episodes
 # --------------------------------------------------------------------------
 
+EnvFactory = Callable[[SimConfig, LoadedMaze], Any]
+
+
+def make_grid_env(cfg: SimConfig, maze: LoadedMaze) -> GridEnv:
+    """The default env: the discrete Python simulator."""
+    return GridEnv(
+        maze.wall_map,
+        maze.goal_cells,
+        params=cfg.to_motion_params(),
+        max_steps=cfg.episode.max_steps,
+        sensing=cfg.to_sensing_params(),
+    )
+
+
 class EpisodeRunner:
     """Holds one env and one policy; runs episodes by seed. Built once per worker."""
 
-    def __init__(self, cfg: SimConfig, maze: LoadedMaze):
+    def __init__(self, cfg: SimConfig, maze: LoadedMaze, env_factory: EnvFactory | None = None):
         cfg = effective_config(cfg, maze)
         self.cfg = cfg
         self.maze = maze
-        self.env = GridEnv(
-            maze.wall_map,
-            maze.goal_cells,
-            params=cfg.to_motion_params(),
-            max_steps=cfg.episode.max_steps,
-            sensing=cfg.to_sensing_params(),
-        )
+        self.env = (env_factory or make_grid_env)(cfg, maze)
         self.env_info = EnvInfo.from_env(self.env)
         self.policy: Policy = make_policy(cfg.policy.name, cfg.policy.selected_params, cfg=cfg)
         self.config_hash = cfg.config_hash(maze.maze_hash)
@@ -200,9 +215,9 @@ def policy_rng(seed: int) -> np.random.Generator:
 _WORKER: EpisodeRunner | None = None
 
 
-def _init_worker(cfg_dict: dict[str, Any], maze: LoadedMaze) -> None:
+def _init_worker(cfg_dict: dict[str, Any], maze: LoadedMaze, env_factory: EnvFactory | None = None) -> None:
     global _WORKER
-    _WORKER = EpisodeRunner(SimConfig.from_dict(cfg_dict), maze)
+    _WORKER = EpisodeRunner(SimConfig.from_dict(cfg_dict), maze, env_factory)
 
 
 def _run_seed(seed: int) -> dict[str, Any]:
@@ -213,8 +228,11 @@ def run_batch(
     cfg: SimConfig,
     maze: LoadedMaze | None = None,
     workers: int | None = None,
+    env_factory: EnvFactory | None = None,
 ) -> list[dict[str, Any]]:
-    """Run ``cfg.run.n_runs`` episodes and return the rows sorted by seed."""
+    """Run ``cfg.run.n_runs`` episodes and return the rows sorted by seed.
+
+    ``env_factory(cfg, maze)`` builds the env (default: ``GridEnv``)."""
     maze = maze if maze is not None else resolve_maze(cfg)
     cfg = effective_config(cfg, maze)
     workers = cfg.run.workers if workers is None else int(workers)
@@ -228,14 +246,14 @@ def run_batch(
     t0 = time.perf_counter()
     rows: list[dict[str, Any]] = []
     if workers <= 1:
-        runner = EpisodeRunner(cfg, maze)
+        runner = EpisodeRunner(cfg, maze, env_factory)
         for i, seed in enumerate(seeds, 1):
             rows.append(runner.run(seed))
             if i % every == 0:
                 log.info("%d/%d episodes, %.1f s", i, n, time.perf_counter() - t0)
     else:
         chunksize = max(1, n // (workers * 8))
-        with mp.Pool(workers, initializer=_init_worker, initargs=(cfg.to_dict(), maze)) as pool:
+        with mp.Pool(workers, initializer=_init_worker, initargs=(cfg.to_dict(), maze, env_factory)) as pool:
             for i, row in enumerate(pool.imap_unordered(_run_seed, seeds, chunksize=chunksize), 1):
                 rows.append(row)
                 if i % every == 0:
@@ -316,9 +334,14 @@ def summarize(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def run_and_write(cfg: SimConfig, maze: LoadedMaze | None = None, workers: int | None = None) -> tuple[Path, list[dict]]:
+def run_and_write(
+    cfg: SimConfig,
+    maze: LoadedMaze | None = None,
+    workers: int | None = None,
+    env_factory: EnvFactory | None = None,
+) -> tuple[Path, list[dict]]:
     maze = maze if maze is not None else resolve_maze(cfg)
-    rows = run_batch(cfg, maze, workers=workers)
+    rows = run_batch(cfg, maze, workers=workers, env_factory=env_factory)
     out = write_csv(rows, cfg.run.out, csv_columns(cfg))
     write_sidecar(cfg, maze, cfg.run.out)
     return out, rows
