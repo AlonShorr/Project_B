@@ -312,3 +312,22 @@ Tests:
 ```bash
 ../.venv/bin/python -m pytest test_sensing.py test_belief.py -q     # Linux/WSL venv
 ```
+
+## Project B: ported Project A heuristic (task t7)
+
+`projecta.py` runs Project A's localize-then-travel algorithm on the Project B model (ROADMAP_TECHNICAL.md §5.1). `policies.py` registers it as the `projecta` policy.
+
+- **Belief:** the exact Bayes filter from `belief.py`, starting uniform over the non-goal cells.
+- **DECLARE:** when the belief mass on the goal reaches `tau_declare`.
+- **LOCALIZING → TRAVELING:** when `P_max ≥ tau_loc` and the strongest cell at Chebyshev distance ≥ `sep_min` is below `rho_amb · P_max` (t1.2). It goes back to localizing when `P_max < tau_lost`.
+- **Localizing:** the safe move with the largest exact expected entropy drop. If no move gains more than `move_cost` nats, the robot travels instead.
+- **Traveling:** a BFS shortest-path step from the most likely cell, replanned every step.
+- **Safety gate:** a move is allowed only if its believed collision risk `Σ b·C[a]` is at most `eps_col`. If every move is riskier, the least risky one is taken.
+
+The thresholds live in the `projecta:` section of `configs/default.yaml`. The runner passes the `sensing:` section to `GridEnv`.
+
+```bash
+python runner.py --policy projecta --set maze.name=small/simple --n-runs 500 --out results/pa.csv
+python runner.py --policy projecta --set projecta.tau_declare=0.99 ...   # Pareto sweep knob (t8)
+python -m pytest test_projecta.py -q
+```

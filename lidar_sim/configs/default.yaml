@@ -37,7 +37,7 @@ motion:
                             # corner open); hard-coded in motion_model.can_step, no other value
   wall_mode: collide        # collide | stop (Project A behaviour)
 
-sensing:                    # sensing.py (t4) / config.SENSING_*; runner.py does not pass it to GridEnv yet
+sensing:                    # sensing.py (t4) / config.SENSING_*; runner.py passes it to GridEnv
   R: 2                      # ray range in cells: |O| = (R+2)^4 = 256
   rays: 4                   # 4 cardinal rays (or 8)
   p_miss: 0.05              # each wall in range is missed independently
@@ -61,7 +61,7 @@ projecta:                   # thresholds of the Project A heuristic (t7)
   move_cost: 0.1            # nats per move, active_localization.select_best_action
 
 policy:
-  name: oracle_bfs          # random | oracle_bfs
+  name: oracle_bfs          # random | oracle_bfs | projecta
   params:                   # one entry per policy; only the entry for `name` is used
     random:
       declare_after: 20     # DECLARE after this many random moves
@@ -70,6 +70,9 @@ policy:
                             # BFS shortest path, but ignores motion noise, so drift and k=2 still
                             # make it collide (~0.03% on medium/m10_a). Not an upper bound.
       diagonal: true        # shortest path over 8 directions (false: 4 cardinal)
+    projecta:               # Project A heuristic (t7, projecta.py); thresholds come from the
+                            # `projecta:` section above, so sweeps use --set projecta.<key>=...
+      diagonal: true        # localize and travel with 8 directions (false: 4 cardinal)
 
 run:
   n_runs: 1000

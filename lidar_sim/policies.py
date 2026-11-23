@@ -28,6 +28,7 @@ from typing import Any, ClassVar, Mapping
 import numpy as np
 
 from motion_model import DIR_DELTAS, MOVE_ACTIONS, Action, MotionParams, can_step
+from sensing import SensingParams
 from sim_config import check_bool, check_int
 
 Cell = tuple[int, int]
@@ -44,6 +45,7 @@ class EnvInfo:
     cols: int
     motion: MotionParams
     max_steps: int
+    sensing: SensingParams | None = None   # None: the env gives no observations
 
     @classmethod
     def from_env(cls, env) -> "EnvInfo":
@@ -54,6 +56,7 @@ class EnvInfo:
             cols=env.cols,
             motion=env.params,
             max_steps=env.max_steps,
+            sensing=env.sensing,
         )
 
 
@@ -83,6 +86,12 @@ class Policy:
 
     def episode_stats(self) -> dict[str, Any]:
         return {}
+
+    @classmethod
+    def from_config(cls, params: Mapping[str, Any], cfg: Any = None) -> "Policy":
+        """Build from the policy's own params; ``cfg`` (SimConfig) is there for
+        policies that also read another config section (``projecta``)."""
+        return cls(**dict(params))
 
     @classmethod
     def check_params(cls, params: Mapping[str, Any]) -> dict[str, Any]:
@@ -199,6 +208,63 @@ def bfs_distances(wall_map: np.ndarray, goal_cells, moves=MOVE_ACTIONS) -> np.nd
     return dist
 
 
+class ProjectAPolicy(Policy):
+    """Project A's heuristic on the Project B model (t7; see projecta.py).
+
+    Greedy information-gain localization, BFS travel from the MAP cell, and
+    DECLARE when the belief mass on the goal reaches ``tau_declare``. The
+    thresholds come from the ``projecta`` config section, not from
+    ``policy.params.projecta`` (which only holds ``diagonal``), so sweeps use
+    ``--set projecta.tau_declare=0.99``. ``policy_params_json`` lists both.
+    """
+
+    name = "projecta"
+    DEFAULTS = {"diagonal": True}
+
+    @classmethod
+    def check_params(cls, params):
+        return {"diagonal": check_bool(params["diagonal"], "diagonal")}
+
+    def __init__(self, thresholds: Any = None, **params):
+        from projecta import ProjectAParams
+
+        super().__init__(**params)
+        if thresholds is None:   # default.yaml is the only source of defaults
+            from sim_config import load_config
+
+            thresholds = load_config().projecta
+        self.thresholds = ProjectAParams.from_mapping(thresholds)
+        self.params = {**self.params, **self.thresholds.as_dict()}
+        self._models: dict[tuple, Any] = {}
+        self.agent = None
+
+    @classmethod
+    def from_config(cls, params, cfg=None):
+        return cls(thresholds=None if cfg is None else cfg.projecta, **dict(params))
+
+    def reset(self, env_info, rng):
+        from projecta import Model, ProjectAAgent
+
+        super().reset(env_info, rng)
+        if env_info.sensing is None:
+            raise ValueError("the projecta policy needs observations: build the env with sensing")
+        moves = MOVE_ACTIONS if self.params["diagonal"] else CARDINAL_ACTIONS
+        wall_map = np.ascontiguousarray(env_info.wall_map)
+        key = (wall_map.shape, wall_map.tobytes(), env_info.goal_cells, env_info.motion, env_info.sensing, moves)
+        if key not in self._models:
+            model = Model.build(wall_map, env_info.goal_cells, env_info.motion, env_info.sensing, moves)
+            self._models[key] = ProjectAAgent(model, self.thresholds)
+        self.agent = self._models[key]
+        self.agent.reset()
+
+    def act(self, obs, info):
+        return self.agent.act(obs)
+
+    def episode_stats(self):
+        a = self.agent
+        return {"steps_to_loc": a.steps_to_loc, "final_P_goal": round(a.p_goal, 6), "n_fallbacks": a.n_fallbacks}
+
+
 # --------------------------------------------------------------------------
 # Registry
 # --------------------------------------------------------------------------
@@ -206,6 +272,7 @@ def bfs_distances(wall_map: np.ndarray, goal_cells, moves=MOVE_ACTIONS) -> np.nd
 POLICIES: dict[str, type[Policy]] = {
     RandomPolicy.name: RandomPolicy,
     OracleBFSPolicy.name: OracleBFSPolicy,
+    ProjectAPolicy.name: ProjectAPolicy,
 }
 POLICY_NAMES: tuple[str, ...] = tuple(POLICIES)
 
@@ -239,7 +306,8 @@ def resolve_params(
     return cls.check_params({**cls.DEFAULTS, **params})
 
 
-def make_policy(name: str, params: Mapping[str, Any] | None = None) -> Policy:
+def make_policy(name: str, params: Mapping[str, Any] | None = None, cfg: Any = None) -> Policy:
+    """Build a policy; pass the SimConfig as ``cfg`` so it can read other sections."""
     if name not in POLICIES:
         raise ValueError(f"unknown policy {name!r}; known: {', '.join(POLICY_NAMES)}")
-    return POLICIES[name](**dict(params or {}))
+    return POLICIES[name].from_config(params or {}, cfg)
