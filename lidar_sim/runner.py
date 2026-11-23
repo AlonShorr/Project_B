@@ -140,9 +140,10 @@ class EpisodeRunner:
             maze.goal_cells,
             params=cfg.to_motion_params(),
             max_steps=cfg.episode.max_steps,
+            sensing=cfg.to_sensing_params(),
         )
         self.env_info = EnvInfo.from_env(self.env)
-        self.policy: Policy = make_policy(cfg.policy.name, cfg.policy.selected_params)
+        self.policy: Policy = make_policy(cfg.policy.name, cfg.policy.selected_params, cfg=cfg)
         self.config_hash = cfg.config_hash(maze.maze_hash)
         self.static = {
             "maze": maze.name,

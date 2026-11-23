@@ -34,6 +34,7 @@ import yaml
 
 from discrete_noise import gaussian_three_bin_probs, mix_extra_outcomes
 from motion_model import WALL_MODES, MotionParams
+from sensing import SensingParams
 
 CONFIG_DIR = Path(__file__).resolve().parent / "configs"
 DEFAULT_CONFIG_PATH = CONFIG_DIR / "default.yaml"
@@ -356,6 +357,15 @@ class SimConfig:
             p_drift=self.motion.p_drift,
             wall_mode=self.motion.wall_mode,
         )
+
+    def to_sensing_params(self) -> SensingParams:
+        """The sensing model GridEnv uses. sensing.py implements 4 rays with skip_to_next only."""
+        if self.sensing.rays != 4 or self.sensing.miss_mode != "skip_to_next":
+            raise ConfigError(
+                f"sensing.rays={self.sensing.rays}, miss_mode={self.sensing.miss_mode!r} is not "
+                "implemented in sensing.py (only rays=4 with skip_to_next)"
+            )
+        return SensingParams(self.sensing.R, self.sensing.p_miss)
 
     def flat_params(self) -> dict[str, Any]:
         """Experiment parameters as ``section.key`` columns for the CSV."""
