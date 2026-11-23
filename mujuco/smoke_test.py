@@ -1,4 +1,4 @@
-"""m1 smoke test (setup guide §5). Run from the mujuco folder:
+"""m1 smoke test (setup guide §5) for the point robot and the mecanum robot. Run from the mujuco folder:
 
     ..\\.venv\\Scripts\\python smoke_test.py
 
@@ -31,3 +31,16 @@ for name, a, k in [("E x1 (blocked)", Action.E, 1), ("S x2", Action.S, 2), ("E x
     res = sim.step_action(a, k)
     print(f"{name:15s} -> cell {res.cell} collided={res.collided} sim {res.sim_time:.2f}s "
           f"wall {1e3 * (time.perf_counter() - t):.0f} ms | obs {sim.observe()}")
+
+# --- mecanum robot (Level A), the default robot -------------------------------
+from sim.mecanum import MecanumSim
+
+mec = MecanumSim(wm, start=(1, 1), R=3, xml_path=str(BUILD_DIR / "mecanum_smoke.xml"))
+print("\nmecanum Level A | geoms:", mec.model.ngeom, "| mass:", round(float(mec.model.body_subtreemass[1]), 3), "kg")
+print("start", mec.cell(), "ToF N,E,S,W (m):", np.round(mec.ranges(), 3), "obs:", mec.observe())
+for name, a, k in [("S x2", Action.S, 2), ("E x2", Action.E, 2), ("NW x1", Action.NW, 1),
+                   ("N x2", Action.N, 2), ("N x1 (blocked)", Action.N, 1)]:
+    t = time.perf_counter()
+    res = mec.step_action(a, k)
+    print(f"{name:15s} -> cell {res.cell} collided={res.collided} sim {res.sim_time:.2f}s "
+          f"wall {1e3 * (time.perf_counter() - t):.0f} ms | obs {mec.observe()}")

@@ -75,10 +75,11 @@ def test_timeout_after_max_steps():
     assert [m.k for m in mj.log.moves] == [1, 1, 1] and mj.log.moves[2].direction is Action.NE
 
 
+@pytest.mark.parametrize("robot", ["mecanum", "point"])
 @pytest.mark.parametrize("policy", ["oracle_bfs", "projecta"])
-def test_runner_runs_policies_unchanged(policy):
+def test_runner_runs_policies_unchanged(policy, robot):
     cfg = CFG.replace([f"policy.name={policy}", "run.n_runs=4", "run.seed0=0"])
-    factory = functools.partial(make_mujoco_env, mj_cfg=MJ)
+    factory = functools.partial(make_mujoco_env, mj_cfg=load_mj_config(overrides=[f"robot={robot}"]))
     rows = run_batch(cfg, SMALL, env_factory=factory)
     assert [r["seed"] for r in rows] == [0, 1, 2, 3]
     assert all(set(LEAD_COLUMNS) <= set(r) for r in rows)
@@ -87,9 +88,13 @@ def test_runner_runs_policies_unchanged(policy):
         assert summarize(rows)["outcomes"]["success"] == 4
 
 
-def test_runner_is_reproducible_with_noise_on():
-    mj_cfg = load_mj_config(overrides=[f"noise.{f}=true" for f in
-                                       ("friction_on", "vel_noise_on", "stop_jitter_on", "range_noise_on", "bad_return_on")])
+@pytest.mark.parametrize("overrides", [
+    [f"mecanum.noise.{f}=true" for f in ("radius_on", "strafe_on", "slip_on", "tof_noise_on", "bad_return_on")],
+    ["robot=point"] + [f"noise.{f}=true" for f in
+                       ("friction_on", "vel_noise_on", "stop_jitter_on", "range_noise_on", "bad_return_on")],
+])
+def test_runner_is_reproducible_with_noise_on(overrides):
+    mj_cfg = load_mj_config(overrides=overrides)
     cfg = CFG.replace(["policy.name=projecta", "run.n_runs=2", "run.seed0=5"])
     factory = functools.partial(make_mujoco_env, mj_cfg=mj_cfg)
     a = run_batch(cfg, SMALL, env_factory=factory)
@@ -101,4 +106,10 @@ def test_runner_is_reproducible_with_noise_on():
 def test_mj_config_rejects_unknown_keys():
     with pytest.raises(ValueError, match="unknown"):
         load_mj_config(overrides=["noise.dropout_on=true"])
-    assert load_mj_config(overrides=["controller.v_max=0.2"])["controller"]["v_max"] == 0.2
+    with pytest.raises(ValueError, match="unknown"):
+        load_mj_config(overrides=["mecanum.tof.fov=20"])
+    with pytest.raises(ValueError, match="robot"):
+        load_mj_config(overrides=["robot=tank"])
+    cfg = load_mj_config(overrides=["controller.v_max=0.2", "mecanum.tof.fov_deg=27"])
+    assert cfg["controller"]["v_max"] == 0.2 and cfg["mecanum"]["tof"]["fov_deg"] == 27
+    assert load_mj_config()["robot"] == "mecanum"

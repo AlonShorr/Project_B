@@ -66,6 +66,7 @@ class MazeSim:
         self.wall_offset = WALL_OFFSET
         self.kp, self.v_max, self.eps_v, self.eps_x = kp, v_max, eps_v, eps_x
         self.t_min, self.timeout = t_min, timeout
+        self.on_step = None          # optional f(data) after every physics step (viewer, video)
         m = self.model
         self.robot_geom = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "robot_geom")
         names = [mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_GEOM, i) or "" for i in range(m.ngeom)]
@@ -88,6 +89,10 @@ class MazeSim:
         sim = cls(spec.wall_map, start or (0, 0), xml_path=xml_path, **kw)
         sim.goal_cells = frozenset(spec.goal_cells)
         return sim
+
+    def _tick(self) -> None:
+        if self.on_step is not None:
+            self.on_step(self.data)
 
     # ---------- state ----------
     def cell(self) -> tuple[int, int]:
@@ -137,6 +142,7 @@ class MazeSim:
             err = target - data.qpos[:2]
             data.ctrl[:] = np.clip(self.kp * err, -self.v_max, self.v_max)
             mujoco.mj_step(m, data)
+            self._tick()
             collided |= self.in_wall_contact()
             t = data.time - t0
             settled = np.linalg.norm(data.qvel[:2]) < self.eps_v and t > self.t_min
@@ -161,6 +167,7 @@ class MazeSim:
             err = target - self.data.qpos[:2]
             self.data.ctrl[:] = np.clip(self.kp * err, -self.v_max, self.v_max)
             mujoco.mj_step(self.model, self.data)
+            self._tick()
             if np.linalg.norm(err) < self.eps_x and np.linalg.norm(self.data.qvel[:2]) < self.eps_v:
                 break
         self.data.ctrl[:] = 0

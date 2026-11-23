@@ -50,7 +50,12 @@ class MujocoGridEnv:
         sensing: SensingParams | None = None,
         noise: NoiseConfig | None = None,
         controller: dict[str, Any] | None = None,
+        robot: str = "mecanum",
+        mecanum: dict[str, Any] | None = None,
     ):
+        """``robot="point"`` uses the setup guide's sim (``noise``, ``controller``);
+        ``robot="mecanum"`` uses sim/mecanum.py with the ``mecanum`` dict
+        (``controller``, ``noise``, ``tof`` sections of configs/sim_default.yaml)."""
         self.wall_map = np.asarray(wall_map)
         self.rows, self.cols = self.wall_map.shape[:2]
         self.goal_cells = frozenset((int(r), int(c)) for r, c in goal_cells)
@@ -63,7 +68,17 @@ class MujocoGridEnv:
         self.max_steps = config.MAX_EPISODE_STEPS if max_steps is None else int(max_steps)
         self.sensing = sensing
         R = sensing.R if sensing is not None else config.SENSING_RANGE_R
-        self.sim = NoisyMazeSim(self.wall_map, (0, 0), R=R, noise=noise, seed=0, **(controller or {}))
+        self.robot = robot
+        if robot == "mecanum":
+            from .mecanum import MecanumSim
+
+            mc = mecanum or {}
+            self.sim = MecanumSim(self.wall_map, (0, 0), R=R, controller=mc.get("controller"),
+                                  noise=mc.get("noise"), tof=mc.get("tof"), seed=0)
+        elif robot == "point":
+            self.sim = NoisyMazeSim(self.wall_map, (0, 0), R=R, noise=noise, seed=0, **(controller or {}))
+        else:
+            raise ValueError(f"robot must be mecanum or point, got {robot!r}")
         self.rng: np.random.Generator | None = None
         self.cell: Cell | None = None
         self.log: EpisodeLog | None = None
@@ -166,4 +181,6 @@ def make_mujoco_env(cfg, maze, mj_cfg: dict[str, Any]) -> MujocoGridEnv:
         sensing=cfg.to_sensing_params(),
         noise=noise_config(mj_cfg),
         controller=dict(mj_cfg["controller"]),
+        robot=mj_cfg["robot"],
+        mecanum=mj_cfg["mecanum"],
     )

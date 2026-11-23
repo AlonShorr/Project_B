@@ -24,7 +24,7 @@ def test_smoke_sequence(smoke_sim):
     """Setup guide §5, with rays in sensing.py order (N, E, S, W) and no corner posts."""
     sim = smoke_sim
     assert sim.cell() == (1, 1)
-    np.testing.assert_allclose(sim.ranges(), [0.264, 0.084, 0.444, 0.264], atol=1e-3)
+    np.testing.assert_allclose(sim.ranges(), [0.265, 0.085, 0.445, 0.265], atol=1e-3)
     assert sim.observe().tolist() == [1, 0, 2, 1]
 
     res = sim.step_action(Action.E, 1)            # inner wall
@@ -121,7 +121,7 @@ def test_bad_returns_are_wrong_readings_never_empty():
 
 
 def test_noise_off_changes_nothing():
-    true = np.array([0.084, 0.264, 1.3])
+    true = np.array([0.085, 0.265, 1.3])
     assert (corrupt_ranges(true, NoiseConfig.all_off(), np.random.default_rng(0)) == true).all()
 
 

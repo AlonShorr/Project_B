@@ -35,6 +35,7 @@ class NoisyMazeSim(MazeSim):
             v_cmd = np.clip(self.kp * err, -self.v_max, self.v_max)
             data.ctrl[:] = gain @ v_cmd              # what the motors actually get
             mujoco.mj_step(m, data)
+            self._tick()
             odo += v_cmd * m.opt.timestep            # odometry integrates the NOMINAL command
             collided |= self.in_wall_contact()
             t = data.time - t0
@@ -47,10 +48,12 @@ class NoisyMazeSim(MazeSim):
         jitter_end = data.time + sample_stop_jitter(self.noise, self.rng)
         while data.time < jitter_end:                # late stop: keep the last command
             mujoco.mj_step(m, data)
+            self._tick()
             collided |= self.in_wall_contact()
         data.ctrl[:] = 0
         for _ in range(int(0.2 / m.opt.timestep)):   # let it come to rest before discretizing
             mujoco.mj_step(m, data)
+            self._tick()
             collided |= self.in_wall_contact()
         res = StepResult(self.cell(), collided, data.time - t0, t > self.timeout)
         if collided:

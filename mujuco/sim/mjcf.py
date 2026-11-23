@@ -1,6 +1,9 @@
-"""Build a MuJoCo MJCF model of a maze plus a yaw-locked robot (m1.0, m1.1).
+"""Build a MuJoCo MJCF model of a maze plus the setup guide's point robot (m1.0, m1.1).
 
-Geometry: 180 mm cell pitch and 12 mm x 50 mm walls centred on cell boundaries.
+The maze part (``maze_worldbody``) is shared with the mecanum robot (mecanum.py).
+
+Geometry: 180 mm cell pitch and 10 mm x 50 mm walls centred on cell boundaries
+(the mecanum brief's real maze; the setup guide used IEEE's 12 mm).
 **There are no corner posts** (team decision, 23.11.2026): the real maze has
 none, and the Python model (motion_model.can_step, D2) lets a diagonal pass a
 corner when all four edges that meet there are open. Each wall is one cell
@@ -24,7 +27,7 @@ from config import CELL_SIZE_MM, WALL_DOWN, WALL_LEFT, WALL_RIGHT, WALL_UP
 from maze_bank import wall_map_problems
 
 CELL = CELL_SIZE_MM / 1000.0   # m (0.180)
-WALL_T = 0.012                 # m
+WALL_T = 0.010                 # m (mecanum brief)
 WALL_H = 0.050                 # m
 ROBOT_R = 0.050                # m (100 mm footprint)
 ROBOT_HALF_H = 0.015
@@ -33,7 +36,10 @@ RAY_Z = 0.020                  # m above floor; must be < WALL_H or every ray mi
 # Distance from the cell centre to the inner face of a wall on its edge. The
 # rangefinder sites sit at the robot centre, so a wall at ray distance j
 # (sensing.py: j = 0 is the robot's own edge) reads WALL_OFFSET + j * CELL.
-WALL_OFFSET = CELL / 2 - WALL_T / 2   # 0.084 m
+WALL_OFFSET = CELL / 2 - WALL_T / 2   # 0.085 m
+
+# Reflectance per geom kind, read by the mecanum ToF cone model (assumed values).
+REFLECTANCE = {"wall": 0.5, "floor": 0.3}
 
 # VL53L4CD: 1 to 1,300 mm. The rangefinder cutoff is the sensor's own range, not
 # R: the sensor always returns a distance, and "no wall within R" is decided when
@@ -93,6 +99,21 @@ def wall_geoms(wall_map: np.ndarray) -> list[str]:
     return g
 
 
+def maze_worldbody(wall_map: np.ndarray) -> str:
+    """Light, floor and walls (all in geom group 0, which the ToF rays see)."""
+    wall_map = np.asarray(wall_map)
+    rows, cols = wall_map.shape[:2]
+    w, h = cols * CELL, rows * CELL
+    walls = "\n    ".join(wall_geoms(wall_map))
+    return f"""<light pos="{w / 2:.3f} {-h / 2:.3f} 1.5" dir="0 0 -1"/>
+    <geom name="floor" type="plane" pos="{w / 2:.3f} {-h / 2:.3f} 0" size="{w:.3f} {h:.3f} .01"
+          rgba=".15 .15 .15 1" contype="0" conaffinity="0" group="0"/>
+    {walls}"""
+
+
+WALL_DEFAULT = '<default class="wall"><geom type="box" rgba=".85 .85 .85 1" contype="1" conaffinity="1" group="0"/></default>'
+
+
 def build_mjcf(wall_map: np.ndarray, start: tuple[int, int], R: int,
                timestep: float = 0.002, kv: float = 5.0, force_limit: float = 2.0) -> str:
     """Return the full MJCF string. ``start`` = (row, col) of the robot's cell.
@@ -111,17 +132,13 @@ def build_mjcf(wall_map: np.ndarray, start: tuple[int, int], R: int,
         for k in RAY_NAMES)
     sensors = "\n    ".join(
         f'<rangefinder name="rf_{k}" site="ray_{k}" cutoff="{SENSOR_MAX_RANGE:.4f}"/>' for k in RAY_NAMES)
-    walls = "\n    ".join(wall_geoms(wall_map))
-    w, h = cols * CELL, rows * CELL
     return f"""<mujoco model="maze_{rows}x{cols}">
   <option timestep="{timestep}"/>
   <default>
-    <default class="wall"><geom type="box" rgba=".85 .85 .85 1" contype="1" conaffinity="1"/></default>
+    {WALL_DEFAULT}
   </default>
   <worldbody>
-    <light pos="{w / 2:.3f} {-h / 2:.3f} 1.5" dir="0 0 -1"/>
-    <geom name="floor" type="plane" pos="{w / 2:.3f} {-h / 2:.3f} 0" size="{w:.3f} {h:.3f} .01"
-          rgba=".15 .15 .15 1" contype="0" conaffinity="0"/>
+    {maze_worldbody(wall_map)}
     <body name="robot" pos="{x0:.4f} {y0:.4f} {RAY_Z:.4f}">
       <joint name="slide_x" type="slide" axis="1 0 0"/>
       <joint name="slide_y" type="slide" axis="0 1 0"/>
@@ -129,7 +146,6 @@ def build_mjcf(wall_map: np.ndarray, start: tuple[int, int], R: int,
             rgba=".2 .55 1 1" contype="1" conaffinity="1"/>
       {sites}
     </body>
-    {walls}
   </worldbody>
   <actuator>
     <velocity name="vx" joint="slide_x" kv="{kv}" forcelimited="true" forcerange="-{force_limit} {force_limit}"/>
